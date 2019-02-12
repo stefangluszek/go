@@ -34,25 +34,34 @@ type ArithAddResp struct {
 	Error  interface{} `json:"error"`
 }
 
-func (t *Arith) Add(args *Args, reply *Reply) error {
-	reply.C = args.A + args.B
+func (t *Arith) Add(args []*Args, reply *Reply) error {
+	reply.C = args[0].A + args[0].B
 	return nil
 }
 
-func (t *Arith) Mul(args *Args, reply *Reply) error {
-	reply.C = args.A * args.B
+func (t *Arith) Sum(args []int, reply *Reply) error {
+	sum := 0
+	for _, i := range args {
+		sum += i
+	}
+	reply.C = sum
 	return nil
 }
 
-func (t *Arith) Div(args *Args, reply *Reply) error {
-	if args.B == 0 {
+func (t *Arith) Mul(args []*Args, reply *Reply) error {
+	reply.C = args[0].A * args[0].B
+	return nil
+}
+
+func (t *Arith) Div(args []*Args, reply *Reply) error {
+	if args[0].B == 0 {
 		return errors.New("divide by zero")
 	}
-	reply.C = args.A / args.B
+	reply.C = args[0].A / args[0].B
 	return nil
 }
 
-func (t *Arith) Error(args *Args, reply *Reply) error {
+func (t *Arith) Error(args []*Args, reply *Reply) error {
 	panic("ERROR")
 }
 
@@ -110,6 +119,25 @@ func TestServerEmptyMessage(t *testing.T) {
 	}
 }
 
+func TestServerSimpleArray(t *testing.T) {
+	cli, srv := net.Pipe()
+	defer cli.Close()
+	go ServeConn(srv)
+	dec := json.NewDecoder(cli)
+	fmt.Fprintf(cli, `{"method": "Arith.Sum", "id": "1234", "params": [100, 200]}`)
+	var resp ArithAddResp
+
+	if err := dec.Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode: %s", err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("resp.Error: %s", resp.Error)
+	}
+	if resp.Result.C != 300 {
+		t.Fatalf("Bad result: 100+200=%d", resp.Result.C)
+	}
+}
+
 func TestServer(t *testing.T) {
 	cli, srv := net.Pipe()
 	defer cli.Close()
@@ -146,28 +174,28 @@ func TestClient(t *testing.T) {
 	defer client.Close()
 
 	// Synchronous calls
-	args := &Args{7, 8}
+	args := []*Args{&Args{7, 8}}
 	reply := new(Reply)
 	err := client.Call("Arith.Add", args, reply)
 	if err != nil {
 		t.Errorf("Add: expected no error but got string %q", err.Error())
 	}
-	if reply.C != args.A+args.B {
-		t.Errorf("Add: got %d expected %d", reply.C, args.A+args.B)
+	if reply.C != args[0].A+args[0].B {
+		t.Errorf("Add: got %d expected %d", reply.C, args[0].A+args[0].B)
 	}
 
-	args = &Args{7, 8}
+	args[0] = &Args{7, 8}
 	reply = new(Reply)
 	err = client.Call("Arith.Mul", args, reply)
 	if err != nil {
 		t.Errorf("Mul: expected no error but got string %q", err.Error())
 	}
-	if reply.C != args.A*args.B {
-		t.Errorf("Mul: got %d expected %d", reply.C, args.A*args.B)
+	if reply.C != args[0].A*args[0].B {
+		t.Errorf("Mul: got %d expected %d", reply.C, args[0].A*args[0].B)
 	}
 
 	// Out of order.
-	args = &Args{7, 8}
+	args[0] = &Args{7, 8}
 	mulReply := new(Reply)
 	mulCall := client.Go("Arith.Mul", args, mulReply, nil)
 	addReply := new(Reply)
@@ -177,20 +205,20 @@ func TestClient(t *testing.T) {
 	if addCall.Error != nil {
 		t.Errorf("Add: expected no error but got string %q", addCall.Error.Error())
 	}
-	if addReply.C != args.A+args.B {
-		t.Errorf("Add: got %d expected %d", addReply.C, args.A+args.B)
+	if addReply.C != args[0].A+args[0].B {
+		t.Errorf("Add: got %d expected %d", addReply.C, args[0].A+args[0].B)
 	}
 
 	mulCall = <-mulCall.Done
 	if mulCall.Error != nil {
 		t.Errorf("Mul: expected no error but got string %q", mulCall.Error.Error())
 	}
-	if mulReply.C != args.A*args.B {
-		t.Errorf("Mul: got %d expected %d", mulReply.C, args.A*args.B)
+	if mulReply.C != args[0].A*args[0].B {
+		t.Errorf("Mul: got %d expected %d", mulReply.C, args[0].A*args[0].B)
 	}
 
 	// Error test
-	args = &Args{7, 0}
+	args[0] = &Args{7, 0}
 	reply = new(Reply)
 	err = client.Call("Arith.Div", args, reply)
 	// expect an error: zero divide

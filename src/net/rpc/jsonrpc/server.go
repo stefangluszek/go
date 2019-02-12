@@ -88,13 +88,7 @@ func (c *serverCodec) ReadRequestBody(x interface{}) error {
 	if c.req.Params == nil {
 		return errMissingParams
 	}
-	// JSON params is array value.
-	// RPC params is struct.
-	// Unmarshal into array containing struct for now.
-	// Should think about making RPC more general.
-	var params [1]interface{}
-	params[0] = x
-	return json.Unmarshal(*c.req.Params, &params)
+	return json.Unmarshal(*c.req.Params, x)
 }
 
 var null = json.RawMessage([]byte("null"))
